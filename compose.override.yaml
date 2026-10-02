@@ -3,6 +3,7 @@ x-dev-providers: &dev-providers
   OPENAI_API_KEY: ${OPENAI_API_KEY:-mock-key}
   ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-http://mockprovider:8081}
   OPENAI_BASE_URL: ${OPENAI_BASE_URL:-http://mockprovider:8081}
+  ADMIN_TOKEN: ${ADMIN_TOKEN:-dev-admin}
 
 services:
   gateway:

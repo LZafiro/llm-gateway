@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 
 	"github.com/LZafiro/llm-gateway/internal/api"
 	"github.com/LZafiro/llm-gateway/internal/breaker"
+	"github.com/LZafiro/llm-gateway/internal/chaos"
 	"github.com/LZafiro/llm-gateway/internal/config"
 	"github.com/LZafiro/llm-gateway/internal/gateway"
 	"github.com/LZafiro/llm-gateway/internal/logging"
@@ -74,12 +78,17 @@ func run(ctx context.Context, args []string) error {
 }
 
 func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) error {
-	providers := buildProviders(cfg)
-	names := make([]string, 0, len(providers))
-	for name := range providers {
-		names = append(names, name)
-	}
+	upstreams := buildProviders(cfg)
+	names := slices.Sorted(maps.Keys(upstreams))
 	logger.Info("providers enabled", "providers", names)
+	chaosStore := chaos.NewStore(names, cfg.Chaos, time.Now, func(name string, rule chaos.Rule, active bool) {
+		logger.Warn("chaos rule changed", "provider", name, "active", active, "source", string(rule.Source), "down", rule.Down, "error_rate", rule.ErrorRate, "latency", rule.Latency)
+	})
+	go chaosStore.Run(ctx, time.Second)
+	providers := make(map[string]provider.Provider, len(upstreams))
+	for name, p := range upstreams {
+		providers[name] = chaos.Wrap(p, chaosStore, rand.Float64)
+	}
 	breakers := breaker.NewSet(names, cfg.Breaker, time.Now, func(name string, from, to breaker.State) {
 		logger.Warn("breaker changed", "provider", name, "from", from.String(), "to", to.String())
 	})
@@ -88,8 +97,10 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pg
 		return fmt.Errorf("build routes: %w", err)
 	}
 	handler := api.NewRouter(api.Deps{
-		Gateway: gateway.New(routes),
-		Logger:  logger,
+		Gateway:    gateway.New(routes),
+		Chaos:      chaosStore,
+		AdminToken: cfg.Secrets.AdminToken,
+		Logger:     logger,
 		Readiness: map[string]api.ReadinessCheck{
 			"postgres":   pool.Ping,
 			"migrations": migrationsApplied(pool),
