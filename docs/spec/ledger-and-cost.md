@@ -11,9 +11,9 @@ pricing:
   anthropic/claude-haiku-4-5:
     input_per_mtok: 1.00
     output_per_mtok: 5.00
-  openai/MINI_MODEL_TBD:
-    input_per_mtok: 0.00
-    output_per_mtok: 0.00
+  openai/gpt-4o-mini:
+    input_per_mtok: 0.15
+    output_per_mtok: 0.60
   mock/mock-1:
     input_per_mtok: 0.00
     output_per_mtok: 0.00

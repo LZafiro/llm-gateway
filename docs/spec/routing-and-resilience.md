@@ -53,10 +53,10 @@ routes:
   aliases:
     fast:
       - anthropic/claude-haiku-4-5
-      - openai/MINI_MODEL_TBD
+      - openai/gpt-4o-mini
   direct:
     - anthropic/claude-haiku-4-5
-    - openai/MINI_MODEL_TBD
+    - openai/gpt-4o-mini
 ```
 
 - `model` matching an alias resolves to its ordered chain.

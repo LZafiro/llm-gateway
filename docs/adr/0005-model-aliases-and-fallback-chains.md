@@ -11,7 +11,7 @@ Falling back from one provider to another necessarily changes the model. If clie
 
 Clients choose between two kinds of model names:
 
-- **Alias** (for example `fast`): resolves to an ordered route such as `[anthropic/claude-haiku-4-5, openai/<mini model>]`. Fallback walks the route in order.
+- **Alias** (for example `fast`): resolves to an ordered route such as `[anthropic/claude-haiku-4-5, openai/gpt-4o-mini]`. Fallback walks the route in order.
 - **Concrete model** (for example `claude-haiku-4-5` or `anthropic/claude-haiku-4-5`): routed to that provider only, with retries but no fallback.
 
 Aliases, routes and per-model prices are declared in the YAML config. The response reports the model that actually answered in both the `model` body field and the `X-Gateway-Model` header, and the provider in `X-Gateway-Provider`.
