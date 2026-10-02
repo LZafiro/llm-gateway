@@ -3,3 +3,22 @@ server:
   log_level: info
   read_timeout: 10s
   shutdown_timeout: 10s
+
+providers:
+  anthropic:
+    base_url: https://api.anthropic.com
+  openai:
+    base_url: https://api.openai.com
+  mock:
+    latency: 300ms
+  response_header_timeout: 15s
+
+routes:
+  aliases:
+    fast:
+      - anthropic/claude-haiku-4-5
+      - openai/gpt-4o-mini
+  direct:
+    - anthropic/claude-haiku-4-5
+    - openai/gpt-4o-mini
+    - mock/mock-1
