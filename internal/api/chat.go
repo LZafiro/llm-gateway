@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/LZafiro/llm-gateway/internal/gateway"
+	"github.com/LZafiro/llm-gateway/internal/ledger"
 	"github.com/LZafiro/llm-gateway/internal/provider"
 	"github.com/LZafiro/llm-gateway/internal/requestid"
 )
@@ -29,6 +30,7 @@ type Gateway interface {
 
 type chatHandler struct {
 	gateway Gateway
+	keys    KeyLookup
 	logger  *slog.Logger
 	now     func() time.Time
 }
@@ -36,11 +38,17 @@ type chatHandler struct {
 func (h *chatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := requestid.New()
 	w.Header().Set(HeaderRequestID, id)
+	key, apiErr := authenticate(h.keys, r)
+	if apiErr != nil {
+		writeError(w, apiErr)
+		return
+	}
 	call, apiErr := decodeChat(w, r)
 	if apiErr != nil {
 		writeError(w, apiErr)
 		return
 	}
+	call.Request.ID, call.Request.Tenant, call.Request.Source = id, key, ledger.SourceAPI
 	if call.Stream {
 		h.stream(w, r, id, call)
 		return
@@ -91,7 +99,7 @@ func (h *chatHandler) stream(w http.ResponseWriter, r *http.Request, id string, 
 		if err = h.finishStream(sw, call, usage); err != nil {
 			h.logger.DebugContext(r.Context(), "stream write failed", "request_id", id, "error", err)
 		}
-	case isCanceled(err) || r.Context().Err() != nil:
+	case r.Context().Err() != nil:
 		h.logger.InfoContext(r.Context(), "client canceled stream", "request_id", id)
 	default:
 		h.logger.WarnContext(r.Context(), "stream interrupted", "request_id", id, "error", err)
@@ -109,7 +117,7 @@ func (h *chatHandler) finishStream(sw *streamWriter, call chatCall, usage *provi
 }
 
 func (h *chatHandler) fail(w http.ResponseWriter, r *http.Request, err error) {
-	if isCanceled(err) || r.Context().Err() != nil {
+	if status, _ := gateway.Classify(err); status == gateway.StatusClientClosed || r.Context().Err() != nil {
 		h.logger.InfoContext(r.Context(), "client canceled request", "request_id", w.Header().Get(HeaderRequestID))
 		return
 	}
@@ -130,6 +138,11 @@ func setMeta(w http.ResponseWriter, meta gateway.Meta) {
 		h.Set(HeaderCache, string(meta.Cache))
 	}
 	h.Set(HeaderAttempts, strconv.Itoa(meta.Attempts))
+	if d := meta.RateLimit; d != nil {
+		h.Set("X-RateLimit-Limit", strconv.Itoa(d.Limit))
+		h.Set("X-RateLimit-Remaining", strconv.Itoa(d.Remaining))
+		h.Set("X-RateLimit-Reset", strconv.Itoa(int(d.Reset.Seconds())))
+	}
 }
 
 func toUsage(u provider.Usage) usageJSON {

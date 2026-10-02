@@ -18,7 +18,28 @@ type Config struct {
 	Resilience Resilience `yaml:"resilience"`
 	Breaker    Breaker    `yaml:"breaker"`
 	Chaos      Chaos      `yaml:"chaos"`
+	Auth       Auth       `yaml:"auth"`
+	Pricing    Pricing    `yaml:"pricing"`
+	Ledger     Ledger     `yaml:"ledger"`
 	Secrets    Secrets    `yaml:"-"`
+}
+
+type Auth struct {
+	RefreshInterval time.Duration `yaml:"refresh_interval"`
+}
+
+type Price struct {
+	InputPerMTok  float64 `yaml:"input_per_mtok"`
+	OutputPerMTok float64 `yaml:"output_per_mtok"`
+}
+
+type Pricing map[string]Price
+
+type Ledger struct {
+	BufferSize    int           `yaml:"buffer_size"`
+	BatchSize     int           `yaml:"batch_size"`
+	FlushInterval time.Duration `yaml:"flush_interval"`
+	Retention     time.Duration `yaml:"retention"`
 }
 
 type Resilience struct {
@@ -115,6 +136,13 @@ func Default() Config {
 			Public:     PublicChaos{Enabled: true, DownDuration: 30 * time.Second, Cooldown: 60 * time.Second},
 			MaxLatency: 20 * time.Second,
 		},
+		Auth: Auth{RefreshInterval: 30 * time.Second},
+		Ledger: Ledger{
+			BufferSize:    10000,
+			BatchSize:     100,
+			FlushInterval: time.Second,
+			Retention:     30 * 24 * time.Hour,
+		},
 	}
 }
 
@@ -156,6 +184,13 @@ func (c Config) validate() error {
 	errs = append(errs, c.Routes.validate()...)
 	errs = append(errs, c.Resilience.validate()...)
 	errs = append(errs, c.Breaker.validate()...)
+	errs = append(errs, c.validatePricing()...)
+	if c.Ledger.BufferSize < 1 || c.Ledger.BatchSize < 1 || c.Ledger.FlushInterval <= 0 || c.Ledger.Retention <= 0 {
+		errs = append(errs, errors.New("ledger: buffer_size, batch_size, flush_interval and retention must be positive"))
+	}
+	if c.Auth.RefreshInterval <= 0 {
+		errs = append(errs, errors.New("auth.refresh_interval must be positive"))
+	}
 	return errors.Join(errs...)
 }
 
@@ -180,6 +215,25 @@ func (r Routes) validate() []error {
 	for _, target := range r.Direct {
 		if !isQualified(target) {
 			errs = append(errs, fmt.Errorf("routes.direct: %q must be provider/model", target))
+		}
+	}
+	return errs
+}
+
+func (c Config) validatePricing() []error {
+	var errs []error
+	targets := append([]string(nil), c.Routes.Direct...)
+	for _, chain := range c.Routes.Aliases {
+		targets = append(targets, chain...)
+	}
+	for _, target := range targets {
+		if _, ok := c.Pricing[target]; !ok {
+			errs = append(errs, fmt.Errorf("pricing: missing price for %q", target))
+		}
+	}
+	for model, price := range c.Pricing {
+		if price.InputPerMTok < 0 || price.OutputPerMTok < 0 {
+			errs = append(errs, fmt.Errorf("pricing.%s: prices must not be negative", model))
 		}
 	}
 	return errs

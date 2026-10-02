@@ -6,11 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/LZafiro/llm-gateway/internal/auth"
 	"github.com/LZafiro/llm-gateway/internal/config"
 	"github.com/LZafiro/llm-gateway/internal/gateway"
+	"github.com/LZafiro/llm-gateway/internal/ledger"
 	"github.com/LZafiro/llm-gateway/internal/provider"
 	"github.com/LZafiro/llm-gateway/internal/provider/providertest"
 	"github.com/LZafiro/llm-gateway/internal/router"
@@ -18,7 +21,53 @@ import (
 
 var fixedNow = func() time.Time { return time.Unix(1767225600, 0) }
 
+const testKey = "gw_0123456789abcdefghijklmnopqrstuv"
+
+type staticKeys map[string]auth.Key
+
+func (s staticKeys) Lookup(plaintext string) (auth.Key, error) {
+	key, ok := s[plaintext]
+	if !ok {
+		return auth.Key{}, auth.ErrInvalidKey
+	}
+	return key, nil
+}
+
+var tenant = auth.Key{ID: 9, Name: "test", Rate: 100, Burst: 100}
+
+type memoryRecorder struct {
+	mu      sync.Mutex
+	entries []ledger.Entry
+}
+
+func (m *memoryRecorder) Record(e ledger.Entry) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.entries = append(m.entries, e)
+}
+
+func (m *memoryRecorder) last(t *testing.T) ledger.Entry {
+	t.Helper()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.entries) == 0 {
+		t.Fatal("no ledger entry recorded")
+	}
+	return m.entries[len(m.entries)-1]
+}
+
+type handlerOptions struct {
+	limiter  gateway.Limiter
+	recorder gateway.Recorder
+	key      *auth.Key
+}
+
 func newHandler(t *testing.T, primary, fallback *providertest.Fake) http.Handler {
+	t.Helper()
+	return newHandlerWith(t, primary, fallback, handlerOptions{})
+}
+
+func newTestRouter(t *testing.T, primary, fallback *providertest.Fake) *router.Router {
 	t.Helper()
 	r, err := router.New(config.Routes{
 		Aliases: map[string][]string{"fast": {"primary/p-1", "fallback/f-1"}},
@@ -30,7 +79,23 @@ func newHandler(t *testing.T, primary, fallback *providertest.Fake) http.Handler
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewRouter(Deps{Gateway: gateway.New(r), Now: fixedNow})
+	return r
+}
+
+func newHandlerWith(t *testing.T, primary, fallback *providertest.Fake, opts handlerOptions) http.Handler {
+	t.Helper()
+	key := tenant
+	if opts.key != nil {
+		key = *opts.key
+	}
+	svc := gateway.New(gateway.Options{
+		Router:   newTestRouter(t, primary, fallback),
+		Limiter:  opts.limiter,
+		Recorder: opts.recorder,
+		Pricing:  ledger.Pricing{"primary/p-1": {InputPerMTok: 1, OutputPerMTok: 5}, "fallback/f-1": {InputPerMTok: 2, OutputPerMTok: 10}},
+		Now:      fixedNow,
+	})
+	return NewRouter(Deps{Gateway: svc, Keys: staticKeys{testKey: key}, Now: fixedNow})
 }
 
 func healthy(name string) *providertest.Fake {
@@ -52,6 +117,7 @@ func down(name string) *providertest.Fake {
 func post(t *testing.T, h http.Handler, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testKey)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
@@ -213,6 +279,7 @@ func TestDeveloperRoleIsTreatedAsSystem(t *testing.T) {
 
 func TestModels(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+testKey)
 	rec := httptest.NewRecorder()
 	newHandler(t, healthy("primary"), healthy("fallback")).ServeHTTP(rec, req)
 	list := decode[modelList](t, rec.Body.String())

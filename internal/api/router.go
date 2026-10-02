@@ -13,6 +13,7 @@ type Service interface {
 
 type Deps struct {
 	Gateway    Service
+	Keys       KeyLookup
 	Chaos      ChaosAdmin
 	AdminToken string
 	Logger     *slog.Logger
@@ -31,8 +32,8 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /readyz", handleReadyz(deps.Readiness))
 	if deps.Gateway != nil {
-		mux.Handle("POST /v1/chat/completions", &chatHandler{gateway: deps.Gateway, logger: deps.Logger, now: deps.Now})
-		mux.Handle("GET /v1/models", handleModels(deps.Gateway))
+		mux.Handle("POST /v1/chat/completions", &chatHandler{gateway: deps.Gateway, keys: deps.Keys, logger: deps.Logger, now: deps.Now})
+		mux.Handle("GET /v1/models", handleModels(deps.Gateway, deps.Keys))
 	}
 	if deps.Chaos != nil {
 		mux.Handle("PUT /admin/chaos/{provider}", requireAdmin(deps.AdminToken, handlePutChaos(deps.Chaos, deps.Now)))

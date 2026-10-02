@@ -43,3 +43,23 @@ chaos:
     down_duration: 30s
     cooldown: 60s
   max_latency: 20s
+
+auth:
+  refresh_interval: 30s
+
+pricing:
+  anthropic/claude-haiku-4-5:
+    input_per_mtok: 1.00
+    output_per_mtok: 5.00
+  openai/gpt-4o-mini:
+    input_per_mtok: 0.15
+    output_per_mtok: 0.60
+  mock/mock-1:
+    input_per_mtok: 0.00
+    output_per_mtok: 0.00
+
+ledger:
+  buffer_size: 10000
+  batch_size: 100
+  flush_interval: 1s
+  retention: 720h

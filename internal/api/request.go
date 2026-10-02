@@ -40,7 +40,7 @@ func decodeChat(w http.ResponseWriter, r *http.Request) (chatCall, *apiError) {
 		return chatCall{}, apiErr
 	}
 	return chatCall{
-		Request:      gateway.Request{Model: req.Model, Chat: chat},
+		Request:      gateway.Request{Model: req.Model, Stream: req.Stream, Chat: chat},
 		Stream:       req.Stream,
 		IncludeUsage: req.StreamOptions != nil && req.StreamOptions.IncludeUsage,
 	}, nil

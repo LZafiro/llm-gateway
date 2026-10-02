@@ -31,6 +31,15 @@ type Outcome struct {
 	Target   Target
 	Attempts []Attempt
 	Skipped  []Target
+	Waited   time.Duration
+}
+
+func (o Outcome) UpstreamTime() time.Duration {
+	total := o.Waited
+	for _, a := range o.Attempts {
+		total += a.Latency
+	}
+	return total
 }
 
 type ExhaustedError struct {
@@ -205,6 +214,7 @@ func (r *Router) run(ctx context.Context, route Route, req provider.ChatRequest,
 			if err := r.sleep(ctx, wait); err != nil {
 				return outcome, provider.TransportError(ctx, target.Provider, err)
 			}
+			outcome.Waited += wait
 		}
 	}
 	if !r.now().Before(deadline) {

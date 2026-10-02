@@ -1,11 +1,12 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
+	"github.com/LZafiro/llm-gateway/internal/gateway"
 	"github.com/LZafiro/llm-gateway/internal/provider"
 	"github.com/LZafiro/llm-gateway/internal/router"
 )
@@ -14,6 +15,7 @@ const (
 	typeInvalidRequest = "invalid_request_error"
 	typeUpstream       = "upstream_error"
 	typeServer         = "server_error"
+	typeRateLimit      = "rate_limit_error"
 )
 
 type apiError struct {
@@ -56,30 +58,28 @@ func writeError(w http.ResponseWriter, e *apiError) {
 }
 
 func errorFor(err error) *apiError {
+	status, code := gateway.Classify(err)
+	e := &apiError{Status: status, Code: code}
 	var exhausted *router.ExhaustedError
-	perr, isProvider := provider.AsError(err)
+	var limited *gateway.RateLimitError
 	switch {
-	case errors.Is(err, router.ErrModelNotFound):
-		return &apiError{Status: http.StatusNotFound, Type: typeInvalidRequest, Code: "model_not_found", Param: "model", Message: err.Error()}
+	case errors.As(err, &limited):
+		e.Type, e.Message = typeRateLimit, "rate limit exceeded for this API key"
+		e.RetryAfter = strconv.Itoa(int(limited.Decision.RetryAfter.Seconds()))
+	case status == http.StatusNotFound:
+		e.Type, e.Param, e.Message = typeInvalidRequest, "model", err.Error()
 	case errors.As(err, &exhausted):
-		message := fmt.Sprintf("all providers unavailable for model %q", exhausted.Route.Requested)
-		return &apiError{Status: http.StatusServiceUnavailable, Type: typeUpstream, Code: "all_providers_unavailable", Message: message, RetryAfter: "1"}
-	case errors.Is(err, router.ErrDeadline):
-		return &apiError{Status: http.StatusGatewayTimeout, Type: typeUpstream, Code: "deadline_exceeded", Message: "request deadline exceeded"}
-	case isProvider && perr.Kind == provider.KindClient:
-		status := perr.Status
-		if status == 0 {
-			status = http.StatusBadRequest
-		}
-		return &apiError{Status: status, Type: typeInvalidRequest, Code: "upstream_client_error", Message: perr.Message}
-	case isProvider:
-		return &apiError{Status: http.StatusBadGateway, Type: typeUpstream, Code: "upstream_error", Message: "upstream provider error"}
+		e.Type, e.RetryAfter = typeUpstream, "1"
+		e.Message = fmt.Sprintf("all providers unavailable for model %q", exhausted.Route.Requested)
+	case status == http.StatusGatewayTimeout:
+		e.Type, e.Message = typeUpstream, "request deadline exceeded"
+	case code == "upstream_client_error":
+		perr, _ := provider.AsError(err)
+		e.Type, e.Message = typeInvalidRequest, perr.Message
+	case code == "upstream_error":
+		e.Type, e.Message = typeUpstream, "upstream provider error"
 	default:
-		return &apiError{Status: http.StatusInternalServerError, Type: typeServer, Code: "internal_error", Message: "internal error"}
+		e.Type, e.Message = typeServer, "internal error"
 	}
-}
-
-func isCanceled(err error) bool {
-	perr, ok := provider.AsError(err)
-	return errors.Is(err, context.Canceled) || ok && perr.Kind == provider.KindCanceled
+	return e
 }

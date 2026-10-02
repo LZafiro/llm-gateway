@@ -10,8 +10,12 @@ type ModelLister interface {
 	Models() []router.Model
 }
 
-func handleModels(lister ModelLister) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+func handleModels(lister ModelLister, keys KeyLookup) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, apiErr := authenticate(keys, r); apiErr != nil {
+			writeError(w, apiErr)
+			return
+		}
 		models := lister.Models()
 		data := make([]modelJSON, 0, len(models))
 		for _, m := range models {

@@ -44,7 +44,7 @@ func newStack(t *testing.T) stack {
 		t.Fatal(err)
 	}
 	return stack{
-		handler:  NewRouter(Deps{Gateway: gateway.New(r), Chaos: store, AdminToken: adminToken, Now: fixedNow}),
+		handler:  NewRouter(Deps{Gateway: gateway.New(gateway.Options{Router: r}), Keys: staticKeys{testKey: tenant}, Chaos: store, AdminToken: adminToken, Now: fixedNow}),
 		breakers: breakers,
 		primary:  primary,
 	}

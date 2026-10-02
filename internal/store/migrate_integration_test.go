@@ -10,7 +10,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-func TestMigrateAppliesAllMigrations(t *testing.T) {
+func startPostgres(t *testing.T) *pgxpool.Pool {
+	t.Helper()
 	ctx := context.Background()
 	container, err := postgres.Run(ctx, "pgvector/pgvector:pg17",
 		postgres.WithDatabase("gateway"),
@@ -22,7 +23,6 @@ func TestMigrateAppliesAllMigrations(t *testing.T) {
 		t.Fatalf("start postgres: %v", err)
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +32,12 @@ func TestMigrateAppliesAllMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
+	return pool
+}
+
+func TestMigrateAppliesAllMigrations(t *testing.T) {
+	ctx := context.Background()
+	pool := startPostgres(t)
 
 	pending, err := PendingMigrations(ctx, pool)
 	if err != nil || !pending {

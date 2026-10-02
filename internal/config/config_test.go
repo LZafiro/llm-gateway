@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const minimalRoutes = "routes:\n  direct:\n    - mock/mock-1\n"
+const minimalRoutes = "routes:\n  direct:\n    - mock/mock-1\npricing:\n  mock/mock-1:\n    input_per_mtok: 0\n    output_per_mtok: 0\n"
 
 func env(values map[string]string) func(string) string {
 	return func(key string) string { return values[key] }
@@ -73,6 +73,7 @@ func TestLoadRejectsInvalidConfig(t *testing.T) {
 		{"bad attempts", "resilience:\n  max_attempts_per_provider: 0\n" + minimalRoutes, withDB, "max_attempts_per_provider"},
 		{"deadline below attempt", "resilience:\n  request_deadline: 1s\n" + minimalRoutes, withDB, "attempt_timeout"},
 		{"min calls above window", "breaker:\n  min_calls: 50\n" + minimalRoutes, withDB, "min_calls"},
+		{"missing price", "routes:\n  direct:\n    - openai/gpt-4o-mini\n", withDB, "missing price"},
 		{"alias with slash", "routes:\n  aliases:\n    a/b:\n      - mock/mock-1\n", withDB, "must not contain"},
 	}
 	for _, tt := range tests {
