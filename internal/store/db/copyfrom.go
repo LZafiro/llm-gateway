@@ -51,7 +51,7 @@ func (r iteratorForInsertLedgerEntries) Values() ([]interface{}, error) {
 		r.rows[0].SavedUsd,
 		r.rows[0].LatencyMs,
 		r.rows[0].TtfbMs,
-		r.rows[0].OverheadMs,
+		r.rows[0].OverheadUs,
 	}, nil
 }
 
@@ -60,5 +60,5 @@ func (r iteratorForInsertLedgerEntries) Err() error {
 }
 
 func (q *Queries) InsertLedgerEntries(ctx context.Context, arg []InsertLedgerEntriesParams) (int64, error) {
-	return q.db.CopyFrom(ctx, []string{"ledger"}, []string{"request_id", "created_at", "tenant_id", "source", "end_user", "requested_model", "provider", "model", "stream", "cache", "similarity", "status", "error_code", "attempts", "prompt_tokens", "completion_tokens", "usage_estimated", "cost_usd", "embedding_cost_usd", "saved_usd", "latency_ms", "ttfb_ms", "overhead_ms"}, &iteratorForInsertLedgerEntries{rows: arg})
+	return q.db.CopyFrom(ctx, []string{"ledger"}, []string{"request_id", "created_at", "tenant_id", "source", "end_user", "requested_model", "provider", "model", "stream", "cache", "similarity", "status", "error_code", "attempts", "prompt_tokens", "completion_tokens", "usage_estimated", "cost_usd", "embedding_cost_usd", "saved_usd", "latency_ms", "ttfb_ms", "overhead_us"}, &iteratorForInsertLedgerEntries{rows: arg})
 }

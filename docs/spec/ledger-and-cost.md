@@ -72,7 +72,7 @@ CREATE TABLE ledger (
     saved_usd       NUMERIC(12,8) NOT NULL DEFAULT 0,
     latency_ms      INTEGER     NOT NULL,
     ttfb_ms         INTEGER,
-    overhead_ms     INTEGER
+    overhead_us     INTEGER
 );
 
 CREATE INDEX ledger_created_at ON ledger (created_at);
@@ -83,7 +83,7 @@ CREATE INDEX ledger_tenant_created ON ledger (tenant_id, created_at);
 - `cache`: `miss|exact|semantic|bypass`.
 - `attempts`: an array of `{provider, model, status, kind, latency_ms}`.
 - `status`: the HTTP status returned to the client, or `499` for a client cancel.
-- `overhead_ms`: `latency_ms` minus the sum of the upstream attempt latencies and backoff waits. This is the time the gateway itself spent. `NULL` on cache hits.
+- `overhead_us`: microseconds the gateway itself spent, `latency` (or TTFB for streams) minus the sum of upstream attempt latencies and backoff waits. Stored in microseconds because measured overhead is in the tens of microseconds and would round to 0 in milliseconds. `NULL` on failures.
 
 No message content is stored.
 
@@ -135,7 +135,7 @@ After the snapshot, the hub keeps in-memory running totals, updated by every `re
 - `gateway_tokens_total{provider,model,direction="prompt|completion"}`
 - `gateway_ledger_dropped_total{reason="buffer_full|flush_failed"}`
 - `gateway_ledger_flush_duration_seconds` histogram
-- `gateway_overhead_seconds` histogram, from `overhead_ms`
+- `gateway_overhead_seconds` histogram, from `overhead_us`
 
 ## Acceptance criteria
 

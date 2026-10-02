@@ -2,7 +2,7 @@
 INSERT INTO ledger (
     request_id, created_at, tenant_id, source, end_user, requested_model, provider, model,
     stream, cache, similarity, status, error_code, attempts, prompt_tokens, completion_tokens,
-    usage_estimated, cost_usd, embedding_cost_usd, saved_usd, latency_ms, ttfb_ms, overhead_ms
+    usage_estimated, cost_usd, embedding_cost_usd, saved_usd, latency_ms, ttfb_ms, overhead_us
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
 );

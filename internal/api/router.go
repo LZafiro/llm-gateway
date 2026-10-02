@@ -17,6 +17,7 @@ type Deps struct {
 	Chaos      ChaosAdmin
 	AdminToken string
 	Logger     *slog.Logger
+	Metrics    http.Handler
 	Readiness  map[string]ReadinessCheck
 	Now        func() time.Time
 }
@@ -31,6 +32,9 @@ func NewRouter(deps Deps) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.Handle("GET /readyz", handleReadyz(deps.Readiness))
+	if deps.Metrics != nil {
+		mux.Handle("GET /metrics", deps.Metrics)
+	}
 	if deps.Gateway != nil {
 		mux.Handle("POST /v1/chat/completions", &chatHandler{gateway: deps.Gateway, keys: deps.Keys, logger: deps.Logger, now: deps.Now})
 		mux.Handle("GET /v1/models", handleModels(deps.Gateway, deps.Keys))

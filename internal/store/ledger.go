@@ -48,7 +48,7 @@ func (s *Store) InsertLedger(ctx context.Context, entries []ledger.Entry) error 
 			SavedUsd:         e.SavedUSD,
 			LatencyMs:        clampInt32(e.Latency.Milliseconds()),
 			TtfbMs:           optionalMillis(e.TTFB),
-			OverheadMs:       optionalMillis(e.Overhead),
+			OverheadUs:       optionalMicros(e.Overhead),
 		})
 	}
 	if _, err := s.queries.InsertLedgerEntries(ctx, rows); err != nil {
@@ -94,6 +94,13 @@ func optionalMillis(d *time.Duration) pgtype.Int4 {
 		return pgtype.Int4{}
 	}
 	return pgtype.Int4{Int32: clampInt32(d.Milliseconds()), Valid: true}
+}
+
+func optionalMicros(d *time.Duration) pgtype.Int4 {
+	if d == nil {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: clampInt32(d.Microseconds()), Valid: true}
 }
 
 func clampInt32(v int64) int32 {

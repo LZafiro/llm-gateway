@@ -21,6 +21,7 @@ import (
 	"github.com/LZafiro/llm-gateway/internal/gateway"
 	"github.com/LZafiro/llm-gateway/internal/ledger"
 	"github.com/LZafiro/llm-gateway/internal/maintenance"
+	"github.com/LZafiro/llm-gateway/internal/metrics"
 	"github.com/LZafiro/llm-gateway/internal/provider"
 	"github.com/LZafiro/llm-gateway/internal/provider/anthropic"
 	"github.com/LZafiro/llm-gateway/internal/provider/mock"
@@ -37,17 +38,19 @@ const (
 
 func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) error {
 	st := store.New(pool)
+	m := metrics.New()
 
 	keySet := auth.NewKeySet(st, logger)
 	if err := keySet.Reload(ctx); err != nil {
 		return err
 	}
-	go keySet.Run(ctx, cfg.Auth.RefreshInterval)
+	go keySet.Run(ctx, cfg.Auth.RefreshInterval, m.KeyReloadFailed)
 
 	limiter := ratelimit.New(time.Now)
 	go limiter.Run(ctx, bucketSweepInterval, bucketIdleTTL)
+	m.Gauge("ratelimit_buckets", "Token buckets held in memory.", func() float64 { return float64(limiter.Len()) })
 
-	writer := ledger.NewWriter(st, cfg.Ledger, logger, ledger.Hooks{})
+	writer := ledger.NewWriter(st, cfg.Ledger, logger, m.LedgerHooks())
 	go writer.Run(context.WithoutCancel(ctx))
 	defer writer.Close()
 
@@ -58,7 +61,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pg
 		},
 	}).Run(ctx)
 
-	routes, chaosStore, err := buildRouter(ctx, cfg, logger)
+	routes, chaosStore, err := buildRouter(ctx, cfg, logger, m)
 	if err != nil {
 		return err
 	}
@@ -67,12 +70,13 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pg
 			Router:   routes,
 			Limiter:  limiter,
 			Pricing:  ledger.Pricing(cfg.Pricing),
-			Recorder: writer,
+			Recorder: gateway.Recorders{writer, m},
 		}),
 		Keys:       keySet,
 		Chaos:      chaosStore,
 		AdminToken: cfg.Secrets.AdminToken,
 		Logger:     logger,
+		Metrics:    m.Handler(),
 		Readiness: map[string]api.ReadinessCheck{
 			"postgres":   pool.Ping,
 			"migrations": migrationsApplied(pool),
@@ -81,7 +85,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pg
 	return listen(ctx, cfg.Server, handler, logger)
 }
 
-func buildRouter(ctx context.Context, cfg config.Config, logger *slog.Logger) (*router.Router, *chaos.Store, error) {
+func buildRouter(ctx context.Context, cfg config.Config, logger *slog.Logger, m *metrics.Metrics) (*router.Router, *chaos.Store, error) {
 	upstreams := buildProviders(cfg)
 	names := slices.Sorted(maps.Keys(upstreams))
 	logger.Info("providers enabled", "providers", names)
@@ -93,8 +97,10 @@ func buildRouter(ctx context.Context, cfg config.Config, logger *slog.Logger) (*
 	for name, p := range upstreams {
 		providers[name] = chaos.Wrap(p, chaosStore, rand.Float64)
 	}
+	m.InitBreakers(names)
 	breakers := breaker.NewSet(names, cfg.Breaker, time.Now, func(name string, from, to breaker.State) {
 		logger.Warn("breaker changed", "provider", name, "from", from.String(), "to", to.String())
+		m.BreakerChanged(name, from, to)
 	})
 	routes, err := router.New(cfg.Routes, providers, router.Options{Resilience: cfg.Resilience, Breakers: breakers})
 	if err != nil {

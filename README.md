@@ -22,11 +22,19 @@ curl localhost:8080/readyz
 
 By default the dev stack routes both `anthropic` and `openai` to a local mock provider that speaks both wire formats, so no API keys are needed. To use the real providers, set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_BASE_URL=https://api.anthropic.com` and `OPENAI_BASE_URL=https://api.openai.com` in `.env`.
 
+Create a gateway API key (printed once, active within 30s):
+
+```sh
+docker compose exec gateway gateway keys create --name local --rate 2 --burst 10
+```
+
 ```sh
 curl localhost:8080/v1/chat/completions \
-  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $GATEWAY_KEY" \
   -d '{"model":"fast","messages":[{"role":"user","content":"Hello"}]}'
 ```
+
+Every request is recorded in the `ledger` table and exported as `gateway_*` metrics on `/metrics` (Prometheus on `localhost:9090`).
 
 | Command | Purpose |
 |---|---|

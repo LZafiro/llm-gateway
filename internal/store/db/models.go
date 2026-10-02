@@ -42,7 +42,7 @@ type Ledger struct {
 	SavedUsd         float64
 	LatencyMs        int32
 	TtfbMs           pgtype.Int4
-	OverheadMs       pgtype.Int4
+	OverheadUs       pgtype.Int4
 }
 
 type MaintenanceRun struct {

@@ -99,7 +99,7 @@ func (s *KeySet) Reload(ctx context.Context) error {
 	return nil
 }
 
-func (s *KeySet) Run(ctx context.Context, interval time.Duration) {
+func (s *KeySet) Run(ctx context.Context, interval time.Duration, onFailure func()) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -109,6 +109,7 @@ func (s *KeySet) Run(ctx context.Context, interval time.Duration) {
 		case <-ticker.C:
 			if err := s.Reload(ctx); err != nil && ctx.Err() == nil {
 				s.logger.WarnContext(ctx, "api key reload failed, keeping previous set", "error", err)
+				onFailure()
 			}
 		}
 	}

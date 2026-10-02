@@ -22,7 +22,7 @@ CREATE TABLE ledger (
     saved_usd          NUMERIC(12,8) NOT NULL DEFAULT 0,
     latency_ms         INTEGER       NOT NULL,
     ttfb_ms            INTEGER,
-    overhead_ms        INTEGER
+    overhead_us        INTEGER
 );
 
 CREATE INDEX ledger_created_at ON ledger (created_at);

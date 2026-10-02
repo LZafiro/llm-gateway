@@ -156,6 +156,14 @@ func metaFor(outcome router.Outcome, decision *ratelimit.Decision) Meta {
 	}
 }
 
+type Recorders []Recorder
+
+func (rs Recorders) Record(entry ledger.Entry) {
+	for _, r := range rs {
+		r.Record(entry)
+	}
+}
+
 type discard struct{}
 
 func (discard) Record(ledger.Entry) {}

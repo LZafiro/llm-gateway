@@ -87,18 +87,18 @@ func TestInsertLedgerAndRetention(t *testing.T) {
 
 	var cost, saved, embedding string
 	var attempts []byte
-	var ttfbMS, overheadMS *int32
+	var ttfbMS, overheadUS *int32
 	var errorCode *string
-	err := st.pool.QueryRow(ctx, `SELECT cost_usd::text, saved_usd::text, embedding_cost_usd::text, attempts, ttfb_ms, overhead_ms, error_code FROM ledger WHERE request_id = 'new'`).
-		Scan(&cost, &saved, &embedding, &attempts, &ttfbMS, &overheadMS, &errorCode)
+	err := st.pool.QueryRow(ctx, `SELECT cost_usd::text, saved_usd::text, embedding_cost_usd::text, attempts, ttfb_ms, overhead_us, error_code FROM ledger WHERE request_id = 'new'`).
+		Scan(&cost, &saved, &embedding, &attempts, &ttfbMS, &overheadUS, &errorCode)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cost != "0.00406900" || saved != "0.00123456" || embedding != "0.00000002" {
 		t.Errorf("cost = %s, saved = %s, embedding = %s", cost, saved, embedding)
 	}
-	if *ttfbMS != 120 || *overheadMS != 3 || errorCode != nil || len(attempts) == 0 {
-		t.Errorf("ttfb = %v, overhead = %v, error = %v, attempts = %s", *ttfbMS, *overheadMS, errorCode, attempts)
+	if *ttfbMS != 120 || *overheadUS != 3000 || errorCode != nil || len(attempts) == 0 {
+		t.Errorf("ttfb = %v, overhead = %v, error = %v, attempts = %s", *ttfbMS, *overheadUS, errorCode, attempts)
 	}
 
 	deleted, err := st.DeleteLedgerBefore(ctx, now.Add(-30*24*time.Hour))
