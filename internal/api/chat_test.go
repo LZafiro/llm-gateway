@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +23,10 @@ func newHandler(t *testing.T, primary, fallback *providertest.Fake) http.Handler
 	r, err := router.New(config.Routes{
 		Aliases: map[string][]string{"fast": {"primary/p-1", "fallback/f-1"}},
 		Direct:  []string{"primary/p-1", "fallback/f-1"},
-	}, map[string]provider.Provider{"primary": primary, "fallback": fallback})
+	}, map[string]provider.Provider{"primary": primary, "fallback": fallback}, router.Options{
+		Resilience: config.Default().Resilience,
+		Sleep:      func(context.Context, time.Duration) error { return nil },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +85,7 @@ func TestCompletionNonStream(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
 	}
 	h := rec.Header()
-	if h.Get(HeaderProvider) != "fallback" || h.Get(HeaderModel) != "f-1" || h.Get(HeaderAttempts) != "2" || h.Get(HeaderCache) != "miss" {
+	if h.Get(HeaderProvider) != "fallback" || h.Get(HeaderModel) != "f-1" || h.Get(HeaderAttempts) != "3" || h.Get(HeaderCache) != "miss" {
 		t.Errorf("headers = %v", h)
 	}
 	id := h.Get(HeaderRequestID)

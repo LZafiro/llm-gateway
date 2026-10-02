@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/LZafiro/llm-gateway/internal/api"
+	"github.com/LZafiro/llm-gateway/internal/breaker"
 	"github.com/LZafiro/llm-gateway/internal/config"
 	"github.com/LZafiro/llm-gateway/internal/gateway"
 	"github.com/LZafiro/llm-gateway/internal/logging"
@@ -79,7 +80,10 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pg
 		names = append(names, name)
 	}
 	logger.Info("providers enabled", "providers", names)
-	routes, err := router.New(cfg.Routes, providers)
+	breakers := breaker.NewSet(names, cfg.Breaker, time.Now, func(name string, from, to breaker.State) {
+		logger.Warn("breaker changed", "provider", name, "from", from.String(), "to", to.String())
+	})
+	routes, err := router.New(cfg.Routes, providers, router.Options{Resilience: cfg.Resilience, Breakers: breakers})
 	if err != nil {
 		return fmt.Errorf("build routes: %w", err)
 	}

@@ -1,9 +1,11 @@
 package router
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/LZafiro/llm-gateway/internal/config"
 	"github.com/LZafiro/llm-gateway/internal/provider"
@@ -15,9 +17,19 @@ var routes = config.Routes{
 	Direct:  []string{"a/model-a", "b/model-b", "b/shared", "c/shared"},
 }
 
+var resilience = config.Resilience{
+	MaxAttemptsPerProvider: 2,
+	BackoffBase:            100 * time.Millisecond,
+	BackoffCap:             time.Second,
+	AttemptTimeout:         15 * time.Second,
+	RequestDeadline:        30 * time.Second,
+}
+
+func noSleep(context.Context, time.Duration) error { return nil }
+
 func newRouter(t *testing.T, a, b *providertest.Fake) *Router {
 	t.Helper()
-	r, err := New(routes, map[string]provider.Provider{"a": a, "b": b, "c": &providertest.Fake{ProviderName: "c"}})
+	r, err := New(routes, map[string]provider.Provider{"a": a, "b": b, "c": &providertest.Fake{ProviderName: "c"}}, Options{Resilience: resilience, Sleep: noSleep})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +60,7 @@ func TestResolve(t *testing.T) {
 }
 
 func TestNewRejectsUnavailableProvider(t *testing.T) {
-	_, err := New(config.Routes{Direct: []string{"missing/m"}}, map[string]provider.Provider{})
+	_, err := New(config.Routes{Direct: []string{"missing/m"}}, map[string]provider.Provider{}, Options{Resilience: resilience})
 	if err == nil {
 		t.Fatal("want error for unavailable provider")
 	}
@@ -74,8 +86,11 @@ func TestCompleteFailsOverOnRetryableError(t *testing.T) {
 	if resp.Content != "from b" || outcome.Target != (Target{"b", "model-b"}) || b.LastModel() != "model-b" {
 		t.Errorf("resp = %+v, outcome = %+v", resp, outcome)
 	}
-	if len(outcome.Attempts) != 2 || outcome.Attempts[0].Kind != provider.KindServer || outcome.Attempts[1].Kind != "" {
+	if len(outcome.Attempts) != 3 || outcome.Attempts[0].Kind != provider.KindServer || outcome.Attempts[1].Kind != provider.KindServer || outcome.Attempts[2].Kind != "" {
 		t.Errorf("attempts = %+v", outcome.Attempts)
+	}
+	if a.Calls() != 2 {
+		t.Errorf("a called %d times, want 2", a.Calls())
 	}
 }
 
@@ -97,7 +112,7 @@ func TestCompleteReportsExhaustion(t *testing.T) {
 	route, _ := r.Resolve("fast")
 	_, outcome, err := r.Complete(t.Context(), route, provider.ChatRequest{})
 	var exhausted *ExhaustedError
-	if !errors.As(err, &exhausted) || len(outcome.Attempts) != 2 {
+	if !errors.As(err, &exhausted) || len(outcome.Attempts) != 4 {
 		t.Fatalf("err = %v, attempts = %d", err, len(outcome.Attempts))
 	}
 }

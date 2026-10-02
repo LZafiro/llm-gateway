@@ -30,6 +30,7 @@ type Error struct {
 	Kind       ErrorKind
 	RetryAfter time.Duration
 	Message    string
+	Injected   bool
 	Err        error
 }
 
@@ -98,7 +99,9 @@ func StatusError(name string, resp *http.Response, message string) *Error {
 func TransportError(ctx context.Context, name string, err error) *Error {
 	kind := KindConnection
 	switch {
-	case ctx.Err() != nil && errors.Is(context.Cause(ctx), context.Canceled):
+	case ctx.Err() != nil && errors.Is(context.Cause(ctx), context.DeadlineExceeded):
+		kind = KindTimeout
+	case ctx.Err() != nil:
 		kind = KindCanceled
 	case errors.Is(err, context.DeadlineExceeded), isTimeout(err):
 		kind = KindTimeout

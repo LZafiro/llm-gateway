@@ -64,7 +64,7 @@ func errorFor(err error) *apiError {
 	case errors.As(err, &exhausted):
 		message := fmt.Sprintf("all providers unavailable for model %q", exhausted.Route.Requested)
 		return &apiError{Status: http.StatusServiceUnavailable, Type: typeUpstream, Code: "all_providers_unavailable", Message: message, RetryAfter: "1"}
-	case errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, router.ErrDeadline):
 		return &apiError{Status: http.StatusGatewayTimeout, Type: typeUpstream, Code: "deadline_exceeded", Message: "request deadline exceeded"}
 	case isProvider && perr.Kind == provider.KindClient:
 		status := perr.Status

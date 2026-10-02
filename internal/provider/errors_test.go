@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"testing"
@@ -71,6 +72,7 @@ func TestTransportError(t *testing.T) {
 		want ErrorKind
 	}{
 		{"canceled by client", canceled, context.Canceled, KindCanceled},
+		{"canceled by timeout cause", timedOut(), context.Canceled, KindTimeout},
 		{"deadline", context.Background(), context.DeadlineExceeded, KindTimeout},
 		{"net timeout", context.Background(), timeoutErr, KindTimeout},
 		{"refused", context.Background(), errors.New("connection refused"), KindConnection},
@@ -95,6 +97,12 @@ func TestParseRetryAfter(t *testing.T) {
 	if got := parseRetryAfter(future); got < 59*time.Minute {
 		t.Errorf("date = %v", got)
 	}
+}
+
+func timedOut() context.Context {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	cancel(fmt.Errorf("attempt timeout: %w", context.DeadlineExceeded))
+	return ctx
 }
 
 type timeoutError struct{}

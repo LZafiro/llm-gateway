@@ -87,7 +87,8 @@ return 503 all_providers_unavailable
 - `KindClient` errors return immediately to the client and are not retried or failed over.
 - `KindMalformed` skips the remaining attempts on this provider and fails over to the next one.
 - `KindCanceled` aborts everything. No response is written and the ledger records status `499`.
-- When the deadline elapses, the request returns `504 deadline_exceeded`.
+- When the deadline elapses before a provider commits, the request returns `504 deadline_exceeded`.
+- `attempt_timeout` and `request_deadline` bound the time until the response commits: the full body for non-stream requests, the first chunk for streams. A committed stream is not cut by either timer, only by client disconnect or upstream failure.
 - Every attempt is recorded in an in-memory attempt trace (`provider`, `model`, `status`, `kind`, `latency_ms`). The total count goes to `X-Gateway-Attempts`, and the trace goes to the ledger (`attempts` jsonb).
 
 ## Retry and backoff
@@ -164,6 +165,6 @@ For OpenAI upstream streams, the adapter always sets `stream_options.include_usa
 
 - A table-driven test covers every classification row.
 - Breaker tests with a fake clock: it opens after 3 failures out of 5 calls, stays open for exactly 10s, and lets exactly one half-open probe through under concurrency.
-- With chaos `down` on Anthropic and alias `fast`, the response comes from OpenAI with `X-Gateway-Attempts` = 2 while the breaker is closed. Once the breaker opens, `X-Gateway-Attempts` = 1.
+- With chaos `down` on Anthropic and alias `fast`, the response comes from OpenAI with `X-Gateway-Attempts` = 3 (two Anthropic attempts, one OpenAI) while the breaker is closed. The breaker opens on the fifth Anthropic failure, so the third request makes 2 attempts. From then on `X-Gateway-Attempts` = 1.
 - A stream that fails before its first chunk fails over transparently. A stream that fails after its first chunk ends with the error event and `[DONE]`.
-- The total request time never exceeds `request_deadline` plus 50ms.
+- The time until commit never exceeds `request_deadline` plus 50ms.
