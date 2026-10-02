@@ -1,0 +1,18 @@
+version: "2"
+sql:
+  - engine: postgresql
+    schema: internal/store/migrations
+    queries: internal/store/queries
+    gen:
+      go:
+        package: db
+        out: internal/store/db
+        sql_package: pgx/v5
+        emit_empty_slices: true
+        overrides:
+          - column: ledger.cost_usd
+            go_type: float64
+          - column: ledger.embedding_cost_usd
+            go_type: float64
+          - column: ledger.saved_usd
+            go_type: float64

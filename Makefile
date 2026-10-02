@@ -1,4 +1,4 @@
-.PHONY: up down logs build test test-integration lint fmt check-comments tidy
+.PHONY: up down logs build test test-integration lint fmt check-comments tidy generate
 
 up:
 	docker compose up -d --build
@@ -29,3 +29,6 @@ check-comments:
 
 tidy:
 	go mod tidy
+
+generate:
+	sqlc generate
