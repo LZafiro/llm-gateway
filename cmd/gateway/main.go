@@ -15,7 +15,13 @@ import (
 
 	"github.com/LZafiro/llm-gateway/internal/api"
 	"github.com/LZafiro/llm-gateway/internal/config"
+	"github.com/LZafiro/llm-gateway/internal/gateway"
 	"github.com/LZafiro/llm-gateway/internal/logging"
+	"github.com/LZafiro/llm-gateway/internal/provider"
+	"github.com/LZafiro/llm-gateway/internal/provider/anthropic"
+	"github.com/LZafiro/llm-gateway/internal/provider/mock"
+	"github.com/LZafiro/llm-gateway/internal/provider/openai"
+	"github.com/LZafiro/llm-gateway/internal/router"
 	"github.com/LZafiro/llm-gateway/internal/store"
 )
 
@@ -67,7 +73,19 @@ func run(ctx context.Context, args []string) error {
 }
 
 func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) error {
+	providers := buildProviders(cfg)
+	names := make([]string, 0, len(providers))
+	for name := range providers {
+		names = append(names, name)
+	}
+	logger.Info("providers enabled", "providers", names)
+	routes, err := router.New(cfg.Routes, providers)
+	if err != nil {
+		return fmt.Errorf("build routes: %w", err)
+	}
 	handler := api.NewRouter(api.Deps{
+		Gateway: gateway.New(routes),
+		Logger:  logger,
 		Readiness: map[string]api.ReadinessCheck{
 			"postgres":   pool.Ping,
 			"migrations": migrationsApplied(pool),
@@ -95,6 +113,20 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pg
 		return fmt.Errorf("shutdown: %w", err)
 	}
 	return nil
+}
+
+func buildProviders(cfg config.Config) map[string]provider.Provider {
+	httpClient := provider.NewHTTPClient(cfg.Providers.ResponseHeaderTimeout)
+	providers := map[string]provider.Provider{
+		mock.Name: mock.New(cfg.Providers.Mock.Latency),
+	}
+	if key := cfg.Secrets.AnthropicAPIKey; key != "" {
+		providers[anthropic.Name] = anthropic.New(cfg.Providers.Anthropic.BaseURL, key, httpClient)
+	}
+	if key := cfg.Secrets.OpenAIAPIKey; key != "" {
+		providers[openai.Name] = openai.New(cfg.Providers.OpenAI.BaseURL, key, httpClient)
+	}
+	return providers
 }
 
 func migrationsApplied(pool *pgxpool.Pool) api.ReadinessCheck {

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/LZafiro/llm-gateway/internal/provider"
@@ -61,7 +62,8 @@ func errorFor(err error) *apiError {
 	case errors.Is(err, router.ErrModelNotFound):
 		return &apiError{Status: http.StatusNotFound, Type: typeInvalidRequest, Code: "model_not_found", Param: "model", Message: err.Error()}
 	case errors.As(err, &exhausted):
-		return &apiError{Status: http.StatusServiceUnavailable, Type: typeUpstream, Code: "all_providers_unavailable", Message: err.Error(), RetryAfter: "1"}
+		message := fmt.Sprintf("all providers unavailable for model %q", exhausted.Route.Requested)
+		return &apiError{Status: http.StatusServiceUnavailable, Type: typeUpstream, Code: "all_providers_unavailable", Message: message, RetryAfter: "1"}
 	case errors.Is(err, context.DeadlineExceeded):
 		return &apiError{Status: http.StatusGatewayTimeout, Type: typeUpstream, Code: "deadline_exceeded", Message: "request deadline exceeded"}
 	case isProvider && perr.Kind == provider.KindClient:
@@ -71,7 +73,7 @@ func errorFor(err error) *apiError {
 		}
 		return &apiError{Status: status, Type: typeInvalidRequest, Code: "upstream_client_error", Message: perr.Message}
 	case isProvider:
-		return &apiError{Status: http.StatusBadGateway, Type: typeUpstream, Code: "upstream_error", Message: perr.Error()}
+		return &apiError{Status: http.StatusBadGateway, Type: typeUpstream, Code: "upstream_error", Message: "upstream provider error"}
 	default:
 		return &apiError{Status: http.StatusInternalServerError, Type: typeServer, Code: "internal_error", Message: "internal error"}
 	}

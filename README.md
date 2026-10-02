@@ -20,6 +20,14 @@ make up
 curl localhost:8080/readyz
 ```
 
+By default the dev stack routes both `anthropic` and `openai` to a local mock provider that speaks both wire formats, so no API keys are needed. To use the real providers, set `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_BASE_URL=https://api.anthropic.com` and `OPENAI_BASE_URL=https://api.openai.com` in `.env`.
+
+```sh
+curl localhost:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"fast","messages":[{"role":"user","content":"Hello"}]}'
+```
+
 | Command | Purpose |
 |---|---|
 | `make test` | Unit tests with the race detector |

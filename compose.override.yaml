@@ -1,8 +1,18 @@
+x-dev-providers: &dev-providers
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-mock-key}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-mock-key}
+  ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-http://mockprovider:8081}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-http://mockprovider:8081}
+
 services:
   gateway:
     image: llm-gateway:dev
     build:
       context: .
+    environment: *dev-providers
+    depends_on:
+      mockprovider:
+        condition: service_started
     volumes:
       - ./config.yaml:/etc/gateway/config.yaml:ro
     ports:
@@ -23,3 +33,11 @@ services:
   prometheus:
     ports:
       - "9090:9090"
+
+  mockprovider:
+    image: llm-gateway:dev
+    pull_policy: never
+    entrypoint: ["/usr/local/bin/mockprovider"]
+    environment:
+      MOCK_LATENCY: ${MOCK_LATENCY:-300ms}
+    networks: [internal]

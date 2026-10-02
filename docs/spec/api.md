@@ -36,7 +36,7 @@ Redis being unreachable does not fail `/readyz`: the cache fails open (see [cach
 | Field | Notes |
 | --- | --- |
 | `model` | Required. Alias (e.g. `fast`) or a direct model (`anthropic/claude-haiku-4-5`, `openai/<model>`). Bare provider model names are accepted when unambiguous. |
-| `messages` | Required, non-empty. Roles `system`, `user`, `assistant`. `content` must be a string or an array of `{"type":"text","text":...}` parts. |
+| `messages` | Required, non-empty. Roles `system`, `user`, `assistant`, and `developer` (treated as `system`). `content` must be a string or an array of `{"type":"text","text":...}` parts. |
 | `stream` | Optional, default `false`. |
 | `stream_options.include_usage` | Accepted. The gateway always computes usage internally and emits the final usage chunk only if the client asked for it. |
 | `max_tokens`, `max_completion_tokens` | Optional. If both are present, `max_completion_tokens` wins. Anthropic requires a value: the default is `1024`. |
@@ -142,7 +142,9 @@ All errors use the OpenAI envelope:
 | 503 | `upstream_error` | `all_providers_unavailable` | Chain exhausted (breakers open, retries spent) |
 | 504 | `upstream_error` | `deadline_exceeded` | 30s request deadline hit |
 
-Upstream `4xx` client errors (e.g. context length exceeded) are passed through with the upstream status and translated into the OpenAI envelope with `type` `invalid_request_error`. They never trigger retry or failover.
+Upstream `4xx` client errors (e.g. context length exceeded) are passed through with the upstream status and translated into the OpenAI envelope with `type` `invalid_request_error` and `code` `upstream_client_error`. They never trigger retry or failover.
+
+Messages for `5xx` responses never include upstream URLs, hostnames or raw transport errors. Those details go to the structured log with the request id.
 
 ## Acceptance criteria
 
