@@ -70,6 +70,9 @@ func TestLoadRejectsInvalidConfig(t *testing.T) {
 		{"no routes", "", withDB, "at least one alias"},
 		{"unqualified direct", "routes:\n  direct:\n    - gpt-4o-mini\n", withDB, "must be provider/model"},
 		{"empty chain", "routes:\n  aliases:\n    fast: []\n", withDB, "chain is empty"},
+		{"bad attempts", "resilience:\n  max_attempts_per_provider: 0\n" + minimalRoutes, withDB, "max_attempts_per_provider"},
+		{"deadline below attempt", "resilience:\n  request_deadline: 1s\n" + minimalRoutes, withDB, "attempt_timeout"},
+		{"min calls above window", "breaker:\n  min_calls: 50\n" + minimalRoutes, withDB, "min_calls"},
 		{"alias with slash", "routes:\n  aliases:\n    a/b:\n      - mock/mock-1\n", withDB, "must not contain"},
 	}
 	for _, tt := range tests {

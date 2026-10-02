@@ -22,3 +22,24 @@ routes:
     - anthropic/claude-haiku-4-5
     - openai/gpt-4o-mini
     - mock/mock-1
+
+resilience:
+  max_attempts_per_provider: 2
+  backoff_base: 100ms
+  backoff_cap: 1s
+  attempt_timeout: 15s
+  request_deadline: 30s
+
+breaker:
+  window_size: 20
+  min_calls: 5
+  failure_ratio: 0.5
+  open_duration: 10s
+  half_open_probes: 1
+
+chaos:
+  public:
+    enabled: true
+    down_duration: 30s
+    cooldown: 60s
+  max_latency: 20s
