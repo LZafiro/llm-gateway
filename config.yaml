@@ -1,0 +1,5 @@
+server:
+  addr: ":8080"
+  log_level: info
+  read_timeout: 10s
+  shutdown_timeout: 10s

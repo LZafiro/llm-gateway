@@ -1,0 +1,131 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/LZafiro/llm-gateway/internal/api"
+	"github.com/LZafiro/llm-gateway/internal/config"
+	"github.com/LZafiro/llm-gateway/internal/logging"
+	"github.com/LZafiro/llm-gateway/internal/store"
+)
+
+var version = "dev"
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, args []string) error {
+	command := "serve"
+	if len(args) > 0 {
+		command = args[0]
+	}
+	if command == "healthcheck" {
+		return healthcheck(ctx)
+	}
+	cfg, err := config.Load(os.Getenv("GATEWAY_CONFIG"), os.Getenv)
+	if err != nil {
+		return err
+	}
+	logger := logging.New(os.Stdout, cfg.Server.LogLevel).With("version", version)
+	pool, err := pgxpool.New(ctx, cfg.Secrets.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("connect postgres: %w", err)
+	}
+	defer pool.Close()
+
+	switch command {
+	case "serve":
+		return serve(ctx, cfg, logger, pool)
+	case "migrate":
+		if len(args) > 1 && args[1] != "up" {
+			return fmt.Errorf("unknown migrate subcommand %q, want up", args[1])
+		}
+		if err := store.Migrate(ctx, pool); err != nil {
+			return err
+		}
+		logger.Info("migrations applied")
+		return nil
+	default:
+		return fmt.Errorf("unknown command %q, want serve, migrate or healthcheck", command)
+	}
+}
+
+func serve(ctx context.Context, cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool) error {
+	handler := api.NewRouter(api.Deps{
+		Readiness: map[string]api.ReadinessCheck{
+			"postgres":   pool.Ping,
+			"migrations": migrationsApplied(pool),
+		},
+	})
+	server := &http.Server{
+		Addr:              cfg.Server.Addr,
+		Handler:           handler,
+		ReadHeaderTimeout: cfg.Server.ReadTimeout,
+	}
+	errs := make(chan error, 1)
+	go func() {
+		logger.Info("listening", "addr", cfg.Server.Addr)
+		errs <- server.ListenAndServe()
+	}()
+	select {
+	case err := <-errs:
+		return fmt.Errorf("serve: %w", err)
+	case <-ctx.Done():
+	}
+	logger.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.Server.ShutdownTimeout)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("shutdown: %w", err)
+	}
+	return nil
+}
+
+func migrationsApplied(pool *pgxpool.Pool) api.ReadinessCheck {
+	return func(ctx context.Context) error {
+		pending, err := store.PendingMigrations(ctx, pool)
+		if err != nil {
+			return err
+		}
+		if pending {
+			return errors.New("pending migrations")
+		}
+		return nil
+	}
+}
+
+const healthcheckURL = "http://127.0.0.1:8080/healthz"
+
+func healthcheck(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthcheckURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("healthcheck: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck: status %d", resp.StatusCode)
+	}
+	return nil
+}
